@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the box_list_field module.
+ */
+
+/**
+ * Implements hook_field_schema().
+ */
+function box_list_field_field_schema($field) {
+  switch ($field['type']) {
+    case 'box_list':
+      $columns = array(
+        'location_id' => array(
+          'type' => 'varchar',
+          'length' => 64,
+          'not null' => FALSE,
+        ),
+      );
+      break;
+  }
+
+  return array(
+    'columns' => $columns,
+  );
+}

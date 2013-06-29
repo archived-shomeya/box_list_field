@@ -1,0 +1,322 @@
+<?php
+
+/**
+ * @file
+ * Field integration for listing box.com items.
+ */
+
+use Guzzle\Http\Exception;
+
+/**
+ * Implements hook_field_info().
+ */
+function box_list_field_field_info() {
+  return array(
+    'box_list' => array(
+      'label' => t('Box.com listing'),
+      'description' => t('This field stores a location in Box.com filesystem and lists items from that location when viwed'),
+      'settings' => array('client_id' => '', 'client_secret' => ''),
+      'instance_settings' => array(),
+      'default_widget' => 'text_textfield',
+      'default_formatter' => 'box_list_items',
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_settings_form().
+ */
+function box_list_field_field_settings_form($field, $instance, $has_data) {
+  $creds = BoxAPICreds::findByKeyOrNew('box_list_field:' . $field['field_name']);
+
+  $settings = $field['settings'];
+
+  $form = array();
+
+  if ($creds->tokenIsValid()) {
+    $form['token_status'] = array(
+      '#markup' => t('<div class="messages status">Your current access and refresh tokens are valid. No further action is required.</div>')
+    );
+  }
+  else {
+    $form['token_status'] = array(
+      '#markup' => t('<div class="messages error">Your current access and refresh tokens are invalid. You need to re-authorize this site by clicking "Authorize" below. If your client ID and secret have changed please update those settings.</div>')
+    );
+  }
+
+
+  if ($field['type'] == 'box_list') {
+    $form['client_id'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Client ID'),
+      '#description' => t('The client ID from your Box.com application settings.'),
+      '#default_value' => $settings['client_id'],
+    );
+
+    $form['client_secret'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Client secret'),
+      '#description' => t('The client secret from your Box.com application settings.'),
+      '#default_value' => $settings['client_secret'],
+    );
+    $form['trigger_oauth'] = array(
+      '#type' => 'submit',
+      '#submit' => array('box_field_list_settings_submit'),
+      '#value' => t('Authorize'),
+    );
+  }
+
+  return $form;
+}
+
+function box_field_list_settings_submit(&$form, &$form_state) {
+  $field_name = $form['#field']['field_name'];
+  $settings = $form_state['values']['field']['settings'];
+
+  $field_info = field_info_field($field_name);
+  $field_info['settings']['client_id'] = $settings['client_id'];
+  $field_info['settings']['client_secret'] = $settings['client_secret'];
+
+  try {
+    field_update_field($field_info);
+  }
+  catch (FieldException $e) {
+    return FALSE;
+  }
+
+  box_api_generate_creds_set('box_list_field:' . $field_name, $settings['client_id'], $settings['client_secret'], array('redirect' => $_GET['q']));
+}
+/**
+ * Implements hook_field_validate().
+ */
+function box_list_field_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+  $client = box_api_factory('box_list_field:' . $field['field_name']);
+  foreach ($items as $delta => $item) {
+    // @todo Length is counted separately for summary and value, so the maximum
+    //   length can be exceeded very easily.
+    if (!empty($item['location_id'])) {
+      try {
+        $location = $client->getFolder($item['location_id']);
+      }
+      catch (\Exception $e) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => "box_list_field_invalid_location",
+          'message' => t('The Box.com location couldn\'t be found.'),
+        );
+      }
+      if (isset($location) && $location['type'] !== 'folder') {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => "box_list_field_invalid_type",
+          'message' => t('The Box.com location is not a folder.'),
+        );
+      }
+
+    }
+  }
+}
+
+/**
+ * Implements hook_field_load().
+ *
+ * Where possible, generate the sanitized version of each field early so that
+ * it is cached in the field cache. This avoids looking up from the filter cache
+ * separately.
+ *
+ * @see text_field_formatter_view()
+ */
+function box_list_field_field_load($entity_type, $entities, $field, $instances, $langcode, &$items) {
+  foreach ($entities as $id => $entity) {
+    foreach ($items[$id] as $delta => $item) {
+
+    }
+  }
+}
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function box_list_field_field_is_empty($item, $field) {
+  if (!isset($item['location_id']) || $item['location_id'] === '') {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function box_list_field_field_formatter_info() {
+  return array(
+    'box_list_items' => array(
+      'label' => t('List items'),
+      'field types' => array('box_list'),
+      'settings' => array('show_folders' => FALSE, 'show_files' => TRUE, 'show_links' => TRUE),
+    ),
+  );
+}
+
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function box_list_field_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $element = array();
+
+  $element['show_files'] = array(
+    '#title' => t('Show files'),
+    '#type' => 'checkbox',
+    '#default_value' => $settings['show_files'],
+    '#description' => t('Check this box to show files in the listing.')
+  );
+  $element['show_folders'] = array(
+    '#title' => t('Show folders'),
+    '#type' => 'checkbox',
+    '#default_value' => $settings['show_folders'],
+    '#description' => t('Check this box to show folders in the listing.')
+  );
+  $element['show_links'] = array(
+    '#title' => t('Show links'),
+    '#type' => 'checkbox',
+    '#default_value' => $settings['show_links'],
+    '#description' => t('Check this box to show links in the listing.')
+  );
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function box_list_field_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $summary = t('Files') . ': ';
+  $summary .= ($settings['show_files']) ? t('Shown') : t('Hidden');
+  $summary .= "\n" . t('Folders') . ': ';
+  $summary .= ($settings['show_folders']) ? t('Shown') : t('Hidden');
+  $summary .= "\n" . t('Links') . ': ';
+  $summary .= ($settings['show_links']) ? t('Shown') : t('Hidden');
+
+  return $summary;
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function box_list_field_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+  $settings = $display['settings'];
+  $client = box_api_factory('box_list_field:' . $field['field_name']);
+
+
+  switch ($display['type']) {
+    case 'box_list_items':
+      foreach ($items as $delta => $item) {
+        $folderItems = $client->getFolderItems($item['location_id']);
+        $list_items = _box_build_item_list($folderItems['entries'], $settings);
+
+        $element[$delta] = array('#theme' => 'item_list', '#items' => $list_items);
+      }
+      break;
+  }
+
+  return $element;
+}
+
+/**
+ * Map entries to item list.
+ */
+function _box_build_item_list($entries, $settings) {
+  $items = array();
+
+  foreach ($entries as $entry) {
+    switch ($entry['type']) {
+      case 'web_link':
+        if ($settings['show_links']) {
+          $items[] = array(
+            'data' => l($entry['name'], $entry['url']),
+            'class' => array('box-bookmark-link', 'box-id-' . $entry['id']),
+          );
+        }
+        break;
+      case 'file':
+        if ($settings['show_files']) {
+          $items[] = array(
+            'data' => l($entry['name'], 'box_field_list/' . $entry['id'] . '/download'),
+            'class' => array('box-file-link', 'box-id-' . $entry['id']),
+          );
+        }
+        break;
+    }
+
+  }
+
+  return $items;
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function box_list_field_field_widget_info() {
+  return array(
+    'box_location' => array(
+      'label' => t('Box location'),
+      'field types' => array('box_list'),
+      'settings' => array(),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_settings_form().
+ */
+function box_list_field_field_widget_settings_form($field, $instance) {
+  $form = array();
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+
+
+  return $form;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function box_list_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $summary_widget = array();
+  $main_widget = array();
+
+  switch ($instance['widget']['type']) {
+    case 'box_location':
+      $main_widget = $element + array(
+        '#type' => 'textfield',
+        '#default_value' => isset($items[$delta]['location_id']) ? $items[$delta]['location_id'] : NULL,
+        '#attributes' => array('class' => array('')),
+      );
+      break;
+  }
+
+  if ($main_widget) {
+    $element['location_id'] = $main_widget;
+  }
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_widget_error().
+ */
+function box_list_field_field_widget_error($element, $error, $form, &$form_state) {
+  switch ($error['error']) {
+    case 'box_list_field_invalid_location':
+    case 'box_list_field_invalid_type':
+      $error_element = $element[$element['#columns'][0]];
+      break;
+  }
+
+  form_error($error_element, $error['message']);
+}
