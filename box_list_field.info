@@ -2,3 +2,4 @@ name = Box.com List Field
 description = Provides a field that lists items from a dedicate location in Box.com.
 core = 7.x
 dependencies[] = box_api
+dependencies[] = file

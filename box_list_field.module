@@ -235,13 +235,15 @@ function box_list_field_field_formatter_view($entity_type, $entity, $field, $ins
  */
 function _box_build_item_list($entries, $settings) {
   $items = array();
+  $icon_path = drupal_get_path('module', 'file') . '/icons';
+  $icon = '<img class="file-icon" alt="" src="' . $icon_path . '/text-x-generic.png" />';
 
   foreach ($entries as $entry) {
     switch ($entry['type']) {
       case 'web_link':
         if ($settings['show_links']) {
           $items[] = array(
-            'data' => l($entry['name'], $entry['url']),
+            'data' => l($icon . $entry['name'], $entry['url'], array('html' => TRUE)),
             'class' => array('box-bookmark-link', 'box-id-' . $entry['id']),
           );
         }
@@ -249,7 +251,7 @@ function _box_build_item_list($entries, $settings) {
       case 'file':
         if ($settings['show_files']) {
           $items[] = array(
-            'data' => l($entry['name'], 'box_field_list/' . $entry['id'] . '/download'),
+            'data' => l($icon . $entry['name'], 'box_field_list/' . $entry['id'] . '/download', array('html' => TRUE)),
             'class' => array('box-file-link', 'box-id-' . $entry['id']),
           );
         }
