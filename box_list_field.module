@@ -215,6 +215,11 @@ function box_list_field_field_formatter_view($entity_type, $entity, $field, $ins
   $settings = $display['settings'];
   $client = box_api_factory('box_list_field:' . $field['field_name']);
 
+  // Make sure we have a valid client
+  if (!$client) {
+    return;
+  }
+
 
   switch ($display['type']) {
     case 'box_list_items':
