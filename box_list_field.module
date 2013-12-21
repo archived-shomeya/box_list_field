@@ -19,8 +19,43 @@ function box_list_field_field_info() {
       'instance_settings' => array(),
       'default_widget' => 'text_textfield',
       'default_formatter' => 'box_list_items',
+      'property_type' => 'field_item_box_list',
+      'property_callbacks' => array('box_list_field_property_info_callback'),
     ),
   );
+}
+
+/**
+ * Additional callback to adapt the property info of box_list fields.
+ *
+ * @see entity_metadata_field_entity_property_info().
+ */
+function box_list_field_property_info_callback(&$info, $entity_type, $field, $instance, $field_type) {
+  $property = &$info[$entity_type]['bundles'][$instance['bundle']]['properties'][$field['field_name']];
+  // Define a data structure so it's possible to deal with both the link title
+  // and URL.
+  $property['getter callback'] = 'entity_metadata_field_verbatim_get';
+  $property['setter callback'] = 'entity_metadata_field_verbatim_set';
+
+    // Auto-create the field item as soon as a property is set.
+  $property['auto creation'] = 'box_list_field_field_item_create';
+
+  $property['property info']['location_id'] = array(
+    'type' => 'text',
+    'label' => t('The box location ID of the item.'),
+    'setter callback' => 'entity_property_verbatim_set',
+  );
+
+  unset($property['query callback']);
+}
+
+/**
+ * Callback for creating a new, empty box_list field item.
+ *
+ * @see link_field_property_info_callback()
+ */
+function box_list_field_field_item_create() {
+  return array('location_id' => NULL);
 }
 
 /**
@@ -241,7 +276,7 @@ function box_list_field_field_formatter_view($entity_type, $entity, $field, $ins
 function _box_build_item_list($entries, $settings) {
   $items = array();
   $icon_path = drupal_get_path('module', 'file') . '/icons';
-  $icon = '<img class="file-icon" alt="" src="' . $icon_path . '/text-x-generic.png" />';
+  $icon = theme('image', array('path' => $icon_path . '/text-x-generic.png', 'attributes' => array('class' => array('file-icon'))));
 
   foreach ($entries as $entry) {
     switch ($entry['type']) {
